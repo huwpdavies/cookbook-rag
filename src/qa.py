@@ -21,7 +21,7 @@ from chromadb.utils import embedding_functions
 
 DB_PATH = "data/processed/chroma_db"
 COLLECTION_NAME = "cookbook"
-N_RESULTS = 5
+N_RESULTS = 8
 
 SYSTEM_PROMPT = """You are answering questions about the book "Salt, Fat, Acid, Heat" by Samin Nosrat, using only the passages provided below.
 
@@ -83,6 +83,7 @@ def build_prompt(question: str, chunks: list[dict]) -> dict:
     API takes the system prompt and the user message as separate fields.
     """
     context = "\n\n---\n\n".join(format_chunk(c) for c in chunks)
+    context = ""
     user_message = f"Passages from the book:\n\n{context}\n\n---\n\nQuestion: {question}"
     return {"system": SYSTEM_PROMPT, "user": user_message}
 

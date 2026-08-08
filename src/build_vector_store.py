@@ -25,7 +25,7 @@ from pathlib import Path
 import chromadb
 from chromadb.utils import embedding_functions
 
-CHUNKS_PATH = Path("data/processed/chunks.jsonl")
+CHUNKS_PATH = Path("data/processed/chunks_v2.jsonl")
 DB_PATH = "data/processed/chroma_db"
 COLLECTION_NAME = "cookbook"
 

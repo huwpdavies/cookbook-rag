@@ -1,6 +1,6 @@
-pip ppypdf==4.3.1
+pypdf==4.3.1
 pdfplumber==0.11.4
-PyMuPDF==1.24.9
+PyMuPDF
 chromadb==0.5.5
 scikit-learn==1.8.0
 anthropic==0.34.2
