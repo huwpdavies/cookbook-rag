@@ -1,29 +1,38 @@
 """
-Phase 6 (part 1): retrieval and prompt building.
+Phase 6: retrieval, prompt building, and the Claude call.
 
 Takes a question, retrieves the 5 most relevant chunks from the Chroma
 store built in Phase 5 (searching across both theory and recipe chunks
-together), and assembles them into a prompt ready to hand to Claude.
+together), assembles them into a prompt, and sends it to Claude. Prints
+the answer alongside a source list (section, title, page range) for
+every chunk actually retrieved, so any answer can be checked against
+the real page it came from.
 
-This doesn't call the API yet, that's the next piece. Splitting it out
-this way means retrieval and prompt construction can be checked against
-real output first, the same practice used in every phase so far, before
-wiring up the actual model call on top of it.
+Requires ANTHROPIC_API_KEY to be set, either in the environment or in a
+.env file at the project root (see .env.example).
 
 Usage:
   python src/qa.py "What does the book say about salting meat?"
 """
 
+import os
 import sys
 
+import anthropic
 import chromadb
 from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DB_PATH = "data/processed/chroma_db"
 COLLECTION_NAME = "cookbook"
-N_RESULTS = 8
+N_RESULTS = 5
+# MODEL = "claude-sonnet-5"
+MODEL = "claude-haiku-4-5"
+MAX_TOKENS = 1024
 
-SYSTEM_PROMPT = """You are answering questions about the book "Salt, Fat, Acid, Heat" by Samin Nosrat, using only the passages provided below.
+SYSTEM_PROMPT = """You are answering questions about the book "Salt, Fat, Acid, Heat" by Samin Nosrat, using only the passages provided below. Your name is 'sAmIn'.
 
 Rules:
 - Answer using only the information in the provided passages. Do not use any outside knowledge about cooking, the book, or its author, even if you happen to know it.
@@ -83,9 +92,37 @@ def build_prompt(question: str, chunks: list[dict]) -> dict:
     API takes the system prompt and the user message as separate fields.
     """
     context = "\n\n---\n\n".join(format_chunk(c) for c in chunks)
-    context = ""
     user_message = f"Passages from the book:\n\n{context}\n\n---\n\nQuestion: {question}"
     return {"system": SYSTEM_PROMPT, "user": user_message}
+
+
+def ask_claude(prompt: dict) -> str:
+    """
+    Sends the assembled system prompt and user message to Claude, returns
+    the answer text. This is the one function in the file that actually
+    costs anything or touches the network, everything upstream of this
+    (retrieval, prompt building) is free and local.
+    """
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
+    message = client.messages.create(
+        model=MODEL,
+        max_tokens=MAX_TOKENS,
+        system=prompt["system"],
+        messages=[{"role": "user", "content": prompt["user"]}],
+    )
+    return message.content[0].text
+
+
+def answer_question(question: str, n_results: int = N_RESULTS) -> dict:
+    """
+    The full Phase 6 pipeline in one call: retrieve, build the prompt,
+    ask Claude, and return both the answer and the sources it was built
+    from, so the two can be checked against each other.
+    """
+    chunks = retrieve_chunks(question, n_results=n_results)
+    prompt = build_prompt(question, chunks)
+    answer = ask_claude(prompt)
+    return {"answer": answer, "sources": chunks}
 
 
 if __name__ == "__main__":
@@ -94,23 +131,13 @@ if __name__ == "__main__":
         sys.exit(1)
 
     question = sys.argv[1]
-    chunks = retrieve_chunks(question)
+    result = answer_question(question)
 
-    print(f'Retrieved {len(chunks)} chunks for: "{question}"\n')
-    for c in chunks:
+    print(result["answer"])
+
+    print("References:")
+    for c in result["sources"]:
         print(
             f"  [{c['type']}] {c['section']} / {c['title']} "
             f"(pages {c['page_start']}-{c['page_end']}, distance={c['distance']:.3f})"
         )
-
-    prompt = build_prompt(question, chunks)
-
-    print("\n" + "=" * 60)
-    print("SYSTEM PROMPT")
-    print("=" * 60)
-    print(prompt["system"])
-
-    print("\n" + "=" * 60)
-    print("USER MESSAGE (this is what gets sent to Claude in the next step)")
-    print("=" * 60)
-    print(prompt["user"])
